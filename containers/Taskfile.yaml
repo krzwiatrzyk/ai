@@ -1,0 +1,19 @@
+version: "3"
+
+tasks:
+  build:claude-code:
+    dir: claude-code
+    desc: Build Claude Code container image
+    cmds:
+      - docker build -t claude-code .
+
+  run:claude-code:
+    desc: Run Claude Code in a container
+    cmds:
+      - >-
+        docker run -it
+        -v $(pwd):/workspace
+        -v ~/.claude:/root/.claude
+        -v ~/.claude.json:/root/.claude.json
+        -w /workspace
+        claude-code

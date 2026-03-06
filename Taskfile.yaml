@@ -1,0 +1,24 @@
+version: "3"
+
+includes:
+  containers:
+    taskfile: containers/Taskfile.yaml
+    dir: containers
+
+tasks:
+  symlink:claude:
+    desc: Symlink Claude Code config files to ~/.claude
+    cmds:
+      - ln -sf {{.ROOT_DIR}}/claude/settings.json ~/.claude/settings.json
+      - ln -sf {{.ROOT_DIR}}/claude/scripts ~/.claude/scripts
+
+  install:claudes:
+    desc: Install claudes command system-wide
+    cmds:
+      - sudo cp {{.ROOT_DIR}}/claude/claudes.sh /usr/local/bin/claudes
+      - chmod +x /usr/local/bin/claudes
+
+  commit:
+  - git add .
+  - git commit -m "Update Claude Code configuration and scripts"
+  - git push
