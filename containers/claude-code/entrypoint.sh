@@ -9,12 +9,17 @@ HOST_CONFIG="/home/claude/.host-config"
 
 # Sync plugins from host metadata via claude CLI (cached in named volume)
 PLUGIN_META="/home/claude/.host-plugins"
-PLUGIN_DIR="/home/claude/.claude/plugins"
+
+# Fix ownership of named volume (Docker creates it as root:root)
+sudo chown claude:claude /home/claude/.claude/plugins
+
+# Cache current state from CLI once
+INSTALLED_MARKETPLACES=$(claude plugin marketplace list 2>/dev/null || true)
+INSTALLED_PLUGINS=$(claude plugin list 2>/dev/null || true)
 
 if [ -f "$PLUGIN_META/known_marketplaces.json" ]; then
-  KNOWN_MARKETPLACES="$PLUGIN_DIR/known_marketplaces.json"
   for repo in $(jq -r '.[] | .source.repo // empty' "$PLUGIN_META/known_marketplaces.json"); do
-    if [ -f "$KNOWN_MARKETPLACES" ] && jq -e --arg r "$repo" '.[] | select(.source.repo == $r)' "$KNOWN_MARKETPLACES" >/dev/null 2>&1; then
+    if echo "$INSTALLED_MARKETPLACES" | grep -qF "$repo"; then
       echo "[entrypoint] Marketplace already added: $repo"
       continue
     fi
@@ -24,11 +29,10 @@ if [ -f "$PLUGIN_META/known_marketplaces.json" ]; then
 fi
 
 if [ -f "$PLUGIN_META/installed_plugins.json" ]; then
-  INSTALLED_PLUGINS="$PLUGIN_DIR/installed_plugins.json"
   jq -r '.plugins | to_entries[] | "\(.value[0].scope // "user") \(.key)"' "$PLUGIN_META/installed_plugins.json" | \
   while read -r scope plugin_id; do
     [ "$scope" = "project" ] && scope="user"
-    if [ -f "$INSTALLED_PLUGINS" ] && jq -e --arg id "$plugin_id" '.plugins[$id]' "$INSTALLED_PLUGINS" >/dev/null 2>&1; then
+    if echo "$INSTALLED_PLUGINS" | grep -qF "$plugin_id"; then
       echo "[entrypoint] Plugin already installed: $plugin_id"
       continue
     fi
