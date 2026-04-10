@@ -1,6 +1,6 @@
 ---
 name: setup-go-project
-description: Bootstrap a new Go project with selected modules (config, cli, tui, metrics, tracing, http, logger, cache, ORM, tests, frontend) using parallel agents
+description: Bootstrap a new Go project with selected modules (config, cli, tui, metrics, tracing, http, logger, cache, ORM, tests, frontend, DI) using parallel agents
 argument-hint: <project-name>
 ---
 
@@ -19,6 +19,8 @@ Follow these throughout the entire scaffolding process:
 5. **Accept interfaces, return structs** - Keep coupling low.
 6. **Errors are values** - Use `fmt.Errorf` with `%w` for wrapping. Define sentinel errors at package level when callers need to check them.
 7. **No globals** - Pass dependencies explicitly. Use constructors.
+8. **Graceful shutdown** - Always use `signal.NotifyContext` to handle OS signals (SIGINT, SIGTERM). Pass the cancellable context down to all long-running components so they shut down cleanly.
+9. **Goroutine management** - Use `errgroup.Group` (from `golang.org/x/sync/errgroup`) to manage concurrent goroutines. Never fire-and-forget goroutines. Every goroutine must be tracked and its error propagated. Use `sync.WaitGroup` only when errors don't matter.
 
 ---
 
@@ -37,7 +39,7 @@ Present the module catalog below and ask the user which modules to include. The 
 - Select categories by number or name
 - For categories with multiple library options, ask which one they prefer
 - Type `all` to include everything with defaults (first listed library)
-- Type a comma-separated list like `config,cli,logger,http`
+- Type a comma-separated list like `config,cli,logger,http,di`
 
 ### Step 3: Scaffold with Agents
 
@@ -222,6 +224,21 @@ Testing utilities and assertion libraries.
 
 Ask the user which one they prefer at project creation time.
 
+### 14. Dependency Injection
+
+Manage dependency wiring and application lifecycle.
+
+| Library | Import | When to use |
+|---------|--------|-------------|
+| **uber-go/fx** (default) | `go.uber.org/fx` | Full DI framework with lifecycle hooks (OnStart/OnStop), module system. Best for services with complex dependency graphs. |
+| **uber-go/dig** | `go.uber.org/dig` | Lightweight DI container without the framework. Use when you want runtime DI but don't need lifecycle management. |
+| **goforj/wire** | `github.com/goforj/wire` | Compile-time DI via code generation. Zero runtime overhead, errors caught at build time. Requires `go generate`. |
+| **samber/do** | `github.com/samber/do/v2` | Modern generics-based DI (no reflection). Scoped injectors, clean API. Good middle ground. |
+
+Ask the user which one they prefer at project creation time.
+
+**Important**: If the project is a service (http, metrics, tracing selected), recommend **uber-go/fx** as the default — its lifecycle hooks pair naturally with servers, DB connections, and telemetry. For CLIs/TUIs or simpler apps, recommend **samber/do** or **goforj/wire**.
+
 ---
 
 ## Project Structure
@@ -234,6 +251,9 @@ Generate this layout (only include directories for selected modules):
 │   └── <app-name>/
 │       └── main.go              # Wires everything together, starts the app
 ├── internal/
+│   ├── app/
+│   │   ├── app.go               # [if di] DI wiring / container setup
+│   │   └── wire.go              # [if di+wire] Wire injector definitions (+ wire_gen.go generated)
 │   ├── config/
 │   │   └── config.go            # [if config] Configuration struct + loaders
 │   ├── handler/
@@ -496,6 +516,8 @@ Ask the user: **cobra** or **urfave/cli**?
 
 Create `cmd/<app-name>/main.go` with the chosen library. Include a root command and a `serve` subcommand (if http module selected) or a sensible default command. If CLI is NOT selected, create a simple `main.go` that boots the app directly without subcommands.
 
+**Important**: Regardless of CLI library choice, `main.go` must use `signal.NotifyContext` + `errgroup` for graceful shutdown (see Principles #8 and #9). If the DI module uses fx, fx handles this via its lifecycle instead.
+
 ---
 
 ### Agent: TUI & CLI UI Module (Charmbracelet)
@@ -629,6 +651,103 @@ If HTTP (Gin) is also selected, add a handler that renders the templ component v
 Ask the user: **testify**, **matryer/is**, or **stdlib**?
 
 Create an example `_test.go` file next to the first existing package (prefer config if it exists). The test should demonstrate the chosen library's assertion style and actually test something from the generated code. If stdlib, use table-driven tests.
+
+---
+
+### Agent: Dependency Injection Module
+
+**Spawn when**: User selected "di"
+
+Ask the user: **uber-go/fx**, **uber-go/dig**, **goforj/wire**, or **samber/do**?
+
+Create `internal/app/app.go` with the DI wiring that connects all selected modules together.
+
+#### If **uber-go/fx**:
+
+Create `internal/app/app.go` with an `fx.New()` setup. Each selected module becomes an `fx.Module` or `fx.Provide` call. Use `fx.Invoke` for side-effects (starting the server, running migrations).
+
+`main.go` should look like:
+```go
+func main() {
+	fx.New(
+		app.Module,
+		// other module options...
+	).Run()
+}
+```
+
+Fx handles graceful shutdown automatically via its lifecycle. Register `OnStart`/`OnStop` hooks for servers, DB connections, telemetry flush, etc.
+
+#### If **uber-go/dig**:
+
+Create `internal/app/app.go` with a `BuildContainer() (*dig.Container, error)` function that creates the container and registers all providers from selected modules via `container.Provide()`.
+
+`main.go` creates the container, invokes the entry point via `container.Invoke()`, and handles graceful shutdown with `signal.NotifyContext` + `errgroup`.
+
+#### If **goforj/wire**:
+
+Create `internal/app/wire.go` with `//go:build wireinject` build tag. Define injector function signatures that declare what dependencies to wire:
+```go
+//go:build wireinject
+
+package app
+
+func InitializeApp(cfg *config.Config) (*App, error) {
+	wire.Build(
+		// ProviderSets from each selected module
+	)
+	return nil, nil
+}
+```
+
+Add a `wire` task to `Taskfile.yaml`:
+```yaml
+wire:
+  desc: Generate Wire dependency injection code
+  cmds:
+    - go run github.com/goforj/wire/cmd/wire ./internal/app/
+```
+
+Run `wire` during post-scaffold to generate `wire_gen.go`.
+
+`main.go` calls `app.InitializeApp()` and handles graceful shutdown with `signal.NotifyContext` + `errgroup`.
+
+#### If **samber/do**:
+
+Create `internal/app/app.go` with an `Injector()` function that creates a `do.Injector` and registers all providers from selected modules using `do.Provide()` with generics:
+```go
+func NewInjector(cfg *config.Config) *do.Injector {
+	i := do.New()
+	do.ProvideValue(i, cfg)
+	// Register providers for each selected module
+	return i
+}
+```
+
+`main.go` creates the injector, invokes the entry point via `do.MustInvoke()`, and handles graceful shutdown with `signal.NotifyContext` + `errgroup`. Use `i.Shutdown()` on context cancellation to trigger cleanup of all services.
+
+#### For all DI options (graceful shutdown pattern in main.go):
+
+When DI is NOT fx (which handles lifecycle itself), `main.go` must follow this pattern:
+```go
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Start long-running services in errgroup
+	g.Go(func() error {
+		return server.ListenAndServe(ctx)
+	})
+
+	if err := g.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+		log.Fatal(err)
+	}
+}
+```
+
+**Important**: Even when DI is NOT selected, `main.go` must still use `signal.NotifyContext` + `errgroup` for graceful shutdown. This is a core scaffolding requirement (see Principles #8 and #9), not specific to the DI module.
 
 ---
 
