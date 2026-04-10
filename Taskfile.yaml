@@ -22,3 +22,5 @@ tasks:
   - git add .
   - git commit -m "Update Claude Code configuration and scripts"
   - git push
+
+  claude:check:credentials: security find-generic-password -s "Claude Code-credentials" -w

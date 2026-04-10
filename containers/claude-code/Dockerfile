@@ -1,7 +1,6 @@
 FROM ubuntu:24.04
 
 ENV NONINTERACTIVE=1
-ENV HOMEBREW_NO_AUTO_UPDATE=1
 
 RUN apt-get update && apt-get install -y \
     curl \
@@ -9,26 +8,26 @@ RUN apt-get update && apt-get install -y \
     jq \
     build-essential \
     procps \
-    gosu \
     sudo \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m -s /bin/bash linuxbrew
-RUN useradd -m -s /bin/bash -G linuxbrew,sudo claude
+RUN useradd -m -s /bin/bash -G sudo claude
 RUN echo 'claude ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/claude
 
-USER linuxbrew
-RUN /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-ENV PATH="/home/linuxbrew/.linuxbrew/bin:${PATH}"
+# Install mise, Node.js, and Claude Code as claude user
+USER claude
+RUN curl https://mise.run | bash
+ENV PATH="/home/claude/.local/bin:${PATH}"
+RUN mise use --global node@24
+RUN curl -fsSL https://claude.ai/install.sh | bash
+RUN mkdir -p /home/claude/.claude \
+    && echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc \
+    && echo 'eval "$(~/.local/bin/mise activate bash 2>/dev/null)"' >> ~/.bashrc
 
-RUN brew install --cask claude-code
-RUN chmod -R g+rx /home/linuxbrew/.linuxbrew/bin /home/linuxbrew/.linuxbrew/Cellar
-
-USER root
-COPY yolo-settings.json /opt/claude-config/settings.json
-COPY entrypoint.sh /entrypoint.sh
+COPY --chown=claude:claude entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+USER claude
 WORKDIR /workspace
 
 ENTRYPOINT ["/entrypoint.sh"]
