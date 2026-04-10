@@ -12,6 +12,17 @@ tasks:
       - ln -sf {{.ROOT_DIR}}/claude/settings.json ~/.claude/settings.json
       - ln -sf {{.ROOT_DIR}}/claude/scripts ~/.claude/scripts
 
+  install:skills:
+    desc: Symlink all skills from skills/ to ~/.claude/skills/
+    cmds:
+      - mkdir -p ~/.claude/skills
+      - for:
+          var: SKILLS
+        cmd: ln -sfn {{.ROOT_DIR}}/skills/{{.ITEM}} ~/.claude/skills/{{.ITEM}}
+    vars:
+      SKILLS:
+        sh: ls -1 skills/ | grep -v '^\.'
+
   install:claudes:
     desc: Install claudes command system-wide
     cmds:
@@ -19,8 +30,8 @@ tasks:
       - chmod +x /usr/local/bin/claudes
 
   commit:
-  - git add .
-  - git commit -m "Update Claude Code configuration and scripts"
-  - git push
+    - git add .
+    - git commit -m "Update Claude Code configuration and scripts"
+    - git push
 
   claude:check:credentials: security find-generic-password -s "Claude Code-credentials" -w
