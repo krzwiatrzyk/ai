@@ -13,12 +13,12 @@ tasks:
       - ln -sf {{.ROOT_DIR}}/claude/scripts ~/.claude/scripts
 
   install:skills:
-    desc: Symlink all skills from skills/ to ~/.claude/skills/
+    desc: Copy all skills from skills/ to ~/.claude/skills/
     cmds:
       - mkdir -p ~/.claude/skills
       - for:
           var: SKILLS
-        cmd: ln -sfn {{.ROOT_DIR}}/skills/{{.ITEM}} ~/.claude/skills/{{.ITEM}}
+        cmd: cp -r {{.ROOT_DIR}}/skills/{{.ITEM}} ~/.claude/skills/{{.ITEM}}
     vars:
       SKILLS:
         sh: ls -1 skills/ | grep -v '^\.'
