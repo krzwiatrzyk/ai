@@ -6,11 +6,30 @@ includes:
     dir: containers
 
 tasks:
+  cursor:install:
+    cmds:
+    - curl https://cursor.com/install -fsS | bash
+    status:
+    - command -v agent
+
+  
   symlink:claude:
     desc: Symlink Claude Code config files to ~/.claude
     cmds:
       - ln -sf {{.ROOT_DIR}}/claude/settings.json ~/.claude/settings.json
       - ln -sf {{.ROOT_DIR}}/claude/scripts ~/.claude/scripts
+
+  agent:symlink:skills:
+    desc: Symlink agent skills files to ~/.agent/skills
+    cmds:
+      - mkdir -p ~/.agent/skills
+      - ln -sf {{.ROOT_DIR}}/skills ~/.agent/skills
+
+  cursor:symlink:skills:
+    desc: Symlink cursor skills files to ~/.cursor/skills
+    cmds:
+      - mkdir -p ~/.cursor/skills
+      - ln -sf {{.ROOT_DIR}}/skills ~/.cursor/skills
 
   install:skills:
     desc: Copy all skills from skills/ to ~/.claude/skills/
