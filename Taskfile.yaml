@@ -28,8 +28,7 @@ tasks:
   cursor:symlink:skills:
     desc: Symlink cursor skills files to ~/.cursor/skills
     cmds:
-      - mkdir -p ~/.cursor/skills
-      - ln -sf {{.ROOT_DIR}}/skills ~/.cursor/skills
+      - ln -sf {{.ROOT_DIR}}/skills ~/.cursor
 
   install:skills:
     desc: Copy all skills from skills/ to ~/.claude/skills/
