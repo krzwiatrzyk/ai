@@ -1,0 +1,113 @@
+---
+- name: Configure Claude Code runtime
+  hosts: localhost
+  connection: local
+  become: false
+
+  vars:
+    host_claude: /host/.claude
+    claude_home: /home/claude.linux
+
+  tasks:
+    - name: Copy credentials
+      copy:
+        src: "{{ host_claude }}/.credentials.json"
+        dest: "{{ claude_home }}/.claude/.credentials.json"
+        remote_src: true
+      when: lookup('file', host_claude + '/.credentials.json', errors='ignore')
+
+    - name: Copy settings
+      copy:
+        src: "{{ host_claude }}/settings.json"
+        dest: "{{ claude_home }}/.claude/settings.json"
+        remote_src: true
+      when: lookup('file', host_claude + '/settings.json', errors='ignore')
+
+    # - name: Copy claude.json
+    #   copy:
+    #     src: "/host/.claude.json"
+    #     dest: "{{ claude_home }}/.claude.json"
+    #     remote_src: true
+    #   when: lookup('file', '/host/.claude.json', errors='ignore')
+
+    - name: Copy scripts directory
+      copy:
+        src: "{{ host_claude }}/scripts/"
+        dest: "{{ claude_home }}/.claude/scripts/"
+        remote_src: true
+      when: lookup('file', host_claude + '/scripts', errors='ignore')
+
+    - name: Copy skills directory
+      copy:
+        src: "{{ host_claude }}/skills/"
+        dest: "{{ claude_home }}/.claude/skills/"
+        remote_src: true
+      when: lookup('file', host_claude + '/skills', errors='ignore')
+
+    - name: Copy agents directory
+      copy:
+        src: "{{ host_claude }}/agents/"
+        dest: "{{ claude_home }}/.claude/agents/"
+        remote_src: true
+      when: lookup('file', host_claude + '/agents', errors='ignore')
+
+    - name: Fix plugins directory ownership
+      file:
+        path: "{{ claude_home }}/.claude/plugins"
+        state: directory
+        owner: claude
+        group: claude
+      become: true
+
+    - name: Get installed marketplaces
+      shell: claude plugin marketplace list 2>/dev/null || true
+      register: installed_marketplaces
+      changed_when: false
+
+    - name: Get installed plugins
+      shell: claude plugin list 2>/dev/null || true
+      register: installed_plugins
+      changed_when: false
+
+    - name: Check known_marketplaces.json exists
+      stat:
+        path: "{{ host_claude }}/plugins/known_marketplaces.json"
+      register: marketplaces_file
+
+    - name: Read marketplace repos
+      shell: jq -r '.[] | .source.repo // empty' "{{ host_claude }}/plugins/known_marketplaces.json"
+      register: marketplace_repos
+      when: marketplaces_file.stat.exists
+      changed_when: false
+
+    - name: Add marketplaces
+      shell: claude plugin marketplace add "{{ item }}"
+      loop: "{{ marketplace_repos.stdout_lines | default([]) }}"
+      when:
+        - marketplaces_file.stat.exists
+        - item not in installed_marketplaces.stdout
+      ignore_errors: true
+
+    - name: Check installed_plugins.json exists
+      stat:
+        path: "{{ host_claude }}/plugins/installed_plugins.json"
+      register: plugins_file
+
+    - name: Read plugin entries
+      shell: >
+        jq -r '.plugins | to_entries[] | "\(.value[0].scope // "user") \(.key)"'
+        "{{ host_claude }}/plugins/installed_plugins.json"
+      register: plugin_entries
+      when: plugins_file.stat.exists
+      changed_when: false
+
+    - name: Install plugins
+      shell: >
+        claude plugin install
+        --scope "{{ 'user' if item.split()[0] == 'project' else item.split()[0] }}"
+        "{{ item.split()[1] }}"
+      loop: "{{ plugin_entries.stdout_lines | default([]) }}"
+      when:
+        - plugins_file.stat.exists
+        - item.split()[1] not in installed_plugins.stdout
+      ignore_errors: true

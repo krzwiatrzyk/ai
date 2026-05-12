@@ -1,0 +1,41 @@
+---
+- name: Install software
+  hosts: localhost
+  connection: local
+  become: false
+
+  tasks:
+    - name: Install GitHub CLI GPG keyring
+      become: true
+      shell: curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+      args:
+        creates: /usr/share/keyrings/githubcli-archive-keyring.gpg
+
+    - name: Add GitHub CLI apt repository
+      become: true
+      apt_repository:
+        repo: "deb [arch={{ ansible_architecture | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
+        filename: github-cli
+        state: present
+
+    - name: Install gh
+      become: true
+      apt:
+        name: gh
+        state: present
+        update_cache: true
+
+    - name: Install terraform via mise
+      shell: /home/claude.linux/.local/bin/mise use --global terraform
+      environment:
+        HOME: /home/claude.linux
+
+    - name: Install tflint via mise
+      shell: /home/claude.linux/.local/bin/mise use --global tflint
+      environment:
+        HOME: /home/claude.linux
+
+    - name: Install terraform-docs via mise
+      shell: /home/claude.linux/.local/bin/mise use --global terraform-docs
+      environment:
+        HOME: /home/claude.linux

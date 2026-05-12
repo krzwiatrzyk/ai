@@ -1,0 +1,76 @@
+---
+- name: Vibe Kanban Client
+  hosts: localhost
+  connection: local
+  become: false
+
+  vars:
+    vibe_kanban_server: "https://vibe-kanban.traefik.me"
+    vibe_kanban_relay: "https://vibe-kanban-relay.traefik.me"
+    vibe_kanban_port: "12100"
+    vibe_kanban_host: "0.0.0.0"
+    claude_home: /home/claude.linux
+
+  tasks:
+    - name: Install vibe-kanban globally
+      shell: npm install -g vibe-kanban
+      environment:
+        PATH: "{{ claude_home }}/.local/share/mise/installs/node/24/bin:{{ claude_home }}/.local/bin:{{ ansible_env.PATH }}"
+        HOME: "{{ claude_home }}"
+
+    - name: Install self-signed root CA to system trust store
+      become: true
+      copy:
+        src: /home/claude.linux/playbooks/plugins/files/ca.pem
+        dest: /usr/local/share/ca-certificates/self-signed-root-ca.crt
+
+    - name: Update system CA certificates
+      become: true
+      command: update-ca-certificates
+
+    - name: Configure vibe-kanban environment
+      blockinfile:
+        path: "{{ claude_home }}/.bashrc"
+        marker: "# {mark} VIBE KANBAN"
+        block: |
+          export VK_SHARED_API_BASE="{{ vibe_kanban_server }}"
+          export VK_SHARED_RELAY_API_BASE="{{ vibe_kanban_relay }}"
+          export VK_TUNNEL=1
+          export PORT={{ vibe_kanban_port }}
+          export HOST={{ vibe_kanban_host }}
+          # export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+
+    - name: Verify server is reachable
+      uri:
+        url: "{{ vibe_kanban_server }}/v1/health"
+        method: GET
+        status_code: 200
+        timeout: 10
+        validate_certs: false
+      register: health_check
+      retries: 3
+      delay: 5
+      until: health_check.status == 200
+
+    - name: Start vibe-kanban in background
+      shell: setsid nohup vibe-kanban > /tmp/vibe-kanban.log 2>&1 &
+      environment:
+        VK_SHARED_API_BASE: "{{ vibe_kanban_server }}"
+        VK_SHARED_RELAY_API_BASE: "{{ vibe_kanban_relay }}"
+        VK_TUNNEL: "1"
+        PORT: "{{ vibe_kanban_port }}"
+        HOST: "{{ vibe_kanban_host }}"
+        # SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+        PATH: "{{ claude_home }}/.local/share/mise/installs/node/24/bin:{{ claude_home }}/.local/bin:{{ ansible_env.PATH }}"
+        HOME: "{{ claude_home }}"
+
+    - name: Wait for vibe-kanban process to start
+      shell: sleep 3 && pgrep -f vibe-kanban
+      register: vibe_kanban_pid
+      retries: 3
+      delay: 2
+      until: vibe_kanban_pid.rc == 0
+
+    - name: Verify vibe-kanban is running
+      debug:
+        msg: "Vibe Kanban client started (PID: {{ vibe_kanban_pid.stdout_lines[0] }}) and connected to {{ vibe_kanban_server }}"

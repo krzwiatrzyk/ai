@@ -1,0 +1,64 @@
+# Lima VM configuration for klaudiusz
+# Usage: limactl create --name klaudiusz vm/klaudiusz.yaml
+
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+
+cpus: 4
+memory: "8GiB"
+disk: "50GiB"
+
+vmType: "vz"
+rosetta:
+  enabled: false
+  binfmt: false
+
+mountType: "virtiofs"
+mountInotify: false
+
+portForwards:
+  - guestPortRange: [12000, 13000]
+    hostPortRange: [12000, 13000]
+
+user:
+  name: "claude"
+
+mounts:
+  - location: "~/private-workspace"
+    writable: true
+  - location: "~/workspace/workspaces"
+    writable: true
+    # mountPoint: "/home/claude.linux/workspaces"
+  - location: "~/.claude"
+    mountPoint: "/host/.claude"
+    writable: false
+  - location: /var/tmp/vibe-kanban
+    writable: true
+  - location: /var/tmp/vibe-kanban-worktrees
+    writable: true
+  - location: "~/.local/share/vibe-kanban"
+    writable: true
+
+hostResolver:
+  hosts:
+    vibe-kanban.traefik.me: host.lima.internal
+    vibe-kanban-relay.traefik.me: host.lima.internal
+
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      hostnamectl set-hostname klaudiusz
+      echo "claude ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/claude
+      apt-get update -qq
+      apt-get install -y -qq git curl ansible
+
+message: |
+  The klaudiusz VM is ready.
+
+  To shell into the VM:
+    limactl shell klaudiusz

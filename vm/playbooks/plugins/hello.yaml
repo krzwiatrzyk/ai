@@ -1,0 +1,10 @@
+---
+- name: Hello Plugin
+  hosts: localhost
+  connection: local
+  become: false
+
+  tasks:
+    - name: Say hello
+      debug:
+        msg: "Hello, example plugin!"

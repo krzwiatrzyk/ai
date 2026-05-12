@@ -1,0 +1,129 @@
+version: 3
+
+tasks:
+  create:
+    cmds:
+      - gopass nothing
+      - limactl create --name klaudiusz vm.yaml
+      - task: start
+      - task: playbooks:update
+      - task: claude:settings:update
+      - task: claude:credentials
+      - task: playbooks:run:selected
+        vars:
+          PLAYBOOK: claude.yaml
+      - task: playbooks:run:selected
+        vars: 
+          PLAYBOOK: claude-plugins.yaml
+      - task: playbooks:plugin:run:selected
+        vars: 
+          PLAYBOOK: git.yaml
+      - task: playbooks:plugin:run:selected
+        vars: 
+          PLAYBOOK: software.yaml
+      - task: github:credentials
+      - task: playbooks:plugin:run:selected
+        vars: 
+          PLAYBOOK: vibe-kanban.yaml
+      - task: credentials:ssh
+
+    
+  start:
+    cmds:
+      - limactl start klaudiusz
+
+  stop:
+    cmds:
+      - limactl stop klaudiusz
+
+  delete:
+    cmds:
+      - limactl delete -f klaudiusz
+
+  ssh:register:
+    cmds:
+      - limactl show-ssh --format config klaudiusz >> ~/.ssh/config
+
+  ssh:deregister:
+    cmds:
+      - sed -i '' '/^Host lima-klaudiusz$/,/^$/d' ~/.ssh/config
+
+  playbooks:update:
+    cmds:
+      - limactl shell klaudiusz -- rm -rf /home/claude.linux/playbooks
+      - limactl copy -r playbooks klaudiusz:/home/claude.linux/playbooks
+
+  playbooks:run:selected:
+    vars:
+      PLAYBOOK: '{{ .PLAYBOOK }}'
+    cmds:
+      - limactl shell --workdir /home/claude.linux klaudiusz  -- ansible-playbook -b playbooks/{{ .PLAYBOOK }}
+
+  playbooks:run:
+    vars:
+      PLAYBOOK:
+        sh: eza -1 -f playbooks | gum choose
+    cmds:
+      - limactl shell --workdir /home/claude.linux klaudiusz  -- ansible-playbook -b playbooks/{{ .PLAYBOOK }}
+
+  playbooks:plugin:run:selected:
+    vars:
+      PLAYBOOK: '{{ .PLAYBOOK }}'
+    cmds:
+      - limactl shell --workdir /home/claude.linux klaudiusz  -- ansible-playbook -b playbooks/plugins/{{ .PLAYBOOK }}
+
+  playbooks:plugin:run:
+    vars:
+      PLAYBOOK:
+        sh: eza -1 -f playbooks/plugins | gum choose
+    cmds:
+      - limactl shell --workdir /home/claude.linux klaudiusz  -- ansible-playbook -b playbooks/plugins/{{ .PLAYBOOK }}
+
+  ssh: limactl shell klaudiusz
+
+  claude:settings:update:
+    cmds:
+      - limactl copy ~/.claude.json klaudiusz:/home/claude.linux/.claude.json
+
+  claude:credentials:
+    cmds:
+      - defer: rm .credentials.json
+      - security find-generic-password -s "Claude Code-credentials" -w > .credentials.json
+      - chmod 666 .credentials.json
+      - limactl shell klaudiusz -- mkdir -p /home/claude.linux/.claude
+      - limactl copy .credentials.json klaudiusz:/home/claude.linux/.claude/.credentials.json
+
+  github:credentials:
+    silent: true
+    vars:
+      GITHUB_TOKEN:
+        sh: gopass show klaudiusz/GITHUB_TOKEN   
+    cmds:
+      - limactl shell klaudiusz -- bash -c "echo {{ .GITHUB_TOKEN }} | gh auth login --with-token"
+      - limactl shell klaudiusz -- gh auth setup-git
+
+  claudes:install:
+    cmds:
+      - sudo cp claudes.sh /usr/local/bin/claudes
+
+  open:vibe-kanban:
+    cmds:
+      - open http://localhost:12100
+
+  vibe-kanban:logs:
+    cmds:
+      - limactl shell klaudiusz -- tail -n 100 -f /tmp/vibe-kanban.log
+
+  credentials:ssh:
+    vars:
+      SSH_KEY:
+        sh: gopass show klaudiusz/SSH_SIGNING_KEY
+    cmds:
+      - limactl shell klaudiusz -- mkdir -p /home/claude.linux/.ssh
+      - limactl shell klaudiusz -- bash -c "echo '{{ .SSH_KEY }}' | base64 -d > /home/claude.linux/.ssh/klaudiusz"
+      - limactl shell klaudiusz -- bash -c "chmod 600 /home/claude.linux/.ssh/klaudiusz"
+
+  kill:go:
+    cmds:
+    - limactl shell klaudiusz -- pkill -f go
+    - limactl shell klaudiusz -- pkill -9 -f 'pkg/tool/.*/(compile|link|vet|asm|cgo|cover)'

@@ -1,0 +1,32 @@
+---
+- name: Install Go and Go-based tools
+  hosts: localhost
+  connection: local
+  become: false
+
+  vars:
+    claude_home: /home/claude.linux
+    mise_bin: "{{ claude_home }}/.local/bin/mise"
+    go_bin_dir: "{{ claude_home }}/go/bin"
+
+  tasks:
+    - name: Install Go via mise
+      shell: "{{ mise_bin }} use --global go@latest"
+      environment:
+        HOME: "{{ claude_home }}"
+
+    - name: Ensure ~/go/bin is on PATH in .bashrc
+      blockinfile:
+        path: "{{ claude_home }}/.bashrc"
+        marker: "# {mark} GO BIN PATH"
+        block: |
+          export PATH="$HOME/go/bin:$PATH"
+        create: true
+
+    - name: Install gotop via go install
+      shell: "{{ mise_bin }} exec -- go install github.com/xxxserxxx/gotop/v4/cmd/gotop@latest"
+      args:
+        creates: "{{ go_bin_dir }}/gotop"
+      environment:
+        HOME: "{{ claude_home }}"
+        GOPATH: "{{ claude_home }}/go"

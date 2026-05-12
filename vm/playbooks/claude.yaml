@@ -1,0 +1,84 @@
+---
+- name: Setup Claude Code environment
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    - name: Install system dependencies
+      become: true
+      apt:
+        name:
+          - curl
+          - git
+          - jq
+          - build-essential
+          - procps
+          - sudo
+        state: present
+        update_cache: true
+
+    - name: Clean apt cache
+      become: true
+      shell: rm -rf /var/lib/apt/lists/*
+
+    - name: Create claude user
+      become: true
+      user:
+        name: claude
+        shell: /bin/bash
+        groups: sudo
+        create_home: true
+
+    - name: Allow claude passwordless sudo
+      become: true
+      copy:
+        content: "claude ALL=(ALL) NOPASSWD:ALL"
+        dest: /etc/sudoers.d/claude
+        mode: "0440"
+
+    - name: Install mise
+      become: true
+      become_user: claude
+      shell: curl https://mise.run | bash
+      args:
+        creates: /home/claude.linux/.local/bin/mise
+
+    - name: Install Node.js via mise
+      become: true
+      become_user: claude
+      shell: /home/claude.linux/.local/bin/mise use --global node@24
+      environment:
+        HOME: /home/claude.linux
+
+    - name: Install Claude Code
+      become: true
+      become_user: claude
+      shell: curl -fsSL https://claude.ai/install.sh | bash
+      environment:
+        HOME: /home/claude.linux
+        PATH: "/home/claude.linux/.local/bin:{{ ansible_env.PATH }}"
+
+    - name: Create .claude directory
+      file:
+        path: /home/claude.linux/.claude
+        state: directory
+        owner: claude
+        group: claude
+
+    - name: Create ansible tmp directory
+      file:
+        path: /home/claude.linux/.ansible/tmp
+        state: directory
+        owner: claude
+        group: claude
+        mode: "0700"
+
+    - name: Configure shell environment
+      become: true
+      become_user: claude
+      blockinfile:
+        path: /home/claude.linux/.bashrc
+        block: |
+          export PATH="$HOME/.local/bin:$PATH"
+          eval "$(~/.local/bin/mise activate bash 2>/dev/null)"

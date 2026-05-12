@@ -1,0 +1,42 @@
+---
+- name: Configure git
+  hosts: localhost
+  connection: local
+  become: false
+
+  tasks:
+    - name: Set git user name
+      git_config:
+        name: user.name
+        value: "Krzysztof Wiatrzyk"
+        scope: global
+
+    - name: Set git user email
+      git_config:
+        name: user.email
+        value: "krzysztof.wiatrzyk@airhelp.com"
+        scope: global
+
+    - name: Set commit signing format to SSH
+      git_config:
+        name: gpg.format
+        value: ssh
+        scope: global
+
+    - name: Set SSH signing key
+      git_config:
+        name: user.signingkey
+        value: /home/claude.linux/.ssh/klaudiusz
+        scope: global
+
+    - name: Enable commit signing by default
+      git_config:
+        name: commit.gpgsign
+        value: "true"
+        scope: global
+
+    - name: Enable tag signing by default
+      git_config:
+        name: tag.gpgsign
+        value: "true"
+        scope: global
